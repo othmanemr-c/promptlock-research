@@ -50,7 +50,6 @@ Understanding these early examples helps security teams prepare before real-worl
 ## Author
 
 Othmane Mrichcha
-GitHub: https://github.com/othmanemr-c
 
 ## Disclaimer
 
