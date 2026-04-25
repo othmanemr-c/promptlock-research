@@ -1,0 +1,225 @@
+# ============================================================
+# PromptLock Detection Pack — Sigma Rules
+# Author  : Othmane Mrichcha
+# Date    : 2026-04-15
+# Version : 1.0
+# GitHub  : github.com/othmane-mrichcha/promptlock-research
+#
+# Coverage:
+#   Rule 1 — Suspicious Ollama process execution
+#   Rule 2 — Outbound connection on port 11434
+#   Rule 3 — GGUF model file creation outside dev context
+#   Rule 4 — LLM-Ransomware HTTP User-Agent detected
+#
+# Tested against: PromptLock PoC 
+# Compatible with: Splunk, Elastic SIEM, Microsoft Sentinel, QRadar
+# ============================================================
+
+
+# ─────────────────────────────────────────────────────────────
+# RULE 1 — Suspicious Ollama Process Execution
+# ─────────────────────────────────────────────────────────────
+title: Suspicious Ollama Process Execution Outside Dev Context
+id: a3f2c1d0-8e4b-4f9a-bc12-1d2e3f4a5b6c
+status: experimental
+description: >
+  Detects Ollama LLM runtime execution from paths inconsistent
+  with a legitimate developer installation. LLM-embedded malware
+  such as PromptLock silently installs Ollama to use a local
+  language model as a runtime decision engine. Legitimate Ollama
+  installations are typically found under Program Files or the
+  user AppData\Local\Ollama directory.
+author: Othmane Mrichcha
+date: 2026-04-15
+references:
+  - https://github.com/othmane-mrichcha/promptlock-research
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection:
+    Image|endswith:
+      - '\ollama.exe'
+      - '\ollama_llama_server.exe'
+  filter_legit_paths:
+    Image|contains:
+      - 'Program Files\Ollama'
+      - 'AppData\Local\Ollama'
+      - 'AppData\Local\Programs\Ollama'
+  condition: selection and not filter_legit_paths
+fields:
+  - Image
+  - ParentImage
+  - CommandLine
+  - User
+  - CurrentDirectory
+falsepositives:
+  - Developers running Ollama from non-standard directories
+  - Portable Ollama installations
+  - DevOps pipelines using custom install paths
+level: high
+tags:
+  - attack.execution
+  - attack.defense_evasion
+  - attack.t1059
+  - attack.t1027
+
+
+# ─────────────────────────────────────────────────────────────
+# RULE 2 — Outbound Network Connection on Port 11434
+# ─────────────────────────────────────────────────────────────
+title: Outbound Connection to Ollama API Port 11434
+id: b7e3d2f1-9a5c-4e8b-ad23-2e3f4a5b6c7d
+status: experimental
+description: >
+  Detects outbound TCP connections to port 11434, the default
+  Ollama LLM API port. In LLM-embedded malware operating in
+  cloud or hybrid mode, the malware wrapper communicates with
+  a remote language model server over this port. Legitimate
+  traffic to port 11434 from non-developer workstations is
+  uncommon and warrants investigation.
+author: Othmane Mrichcha
+date: 2026-04-15
+references:
+  - https://github.com/othmane-mrichcha/promptlock-research
+logsource:
+  category: network_connection
+  product: windows
+detection:
+  selection:
+    Initiated: 'true'
+    DestinationPort: 11434
+  filter_localhost:
+    DestinationIp:
+      - '127.0.0.1'
+      - '::1'
+  filter_legit_process:
+    Image|contains:
+      - 'Program Files\Ollama'
+      - 'AppData\Local\Ollama'
+  condition: selection and not filter_localhost and not filter_legit_process
+fields:
+  - Image
+  - SourceIp
+  - DestinationIp
+  - DestinationPort
+  - User
+falsepositives:
+  - Developers using Ollama from non-standard install paths
+  - Internal LLM inference servers on port 11434
+  - AI development tools using custom Ollama endpoints
+level: medium
+tags:
+  - attack.command_and_control
+  - attack.t1071.001
+  - attack.t1095
+
+
+# ─────────────────────────────────────────────────────────────
+# RULE 3 — GGUF Model File Created Outside Developer Context
+# ─────────────────────────────────────────────────────────────
+title: GGUF Model File Created in Suspicious Location
+id: c4a1e3b2-0f6d-4c7e-be34-3f4a5b6c7d8e
+status: experimental
+description: >
+  Detects the creation of GGUF model files (quantized LLM weights)
+  outside known legitimate AI development directories. LLM-embedded
+  malware stages a local language model on the victim machine to
+  avoid network-based C2 detection. GGUF files range from 1 to 8 GB
+  and represent an unusual artifact on non-developer endpoints.
+author: Othmane Mrichcha
+date: 2026-04-15
+references:
+  - https://github.com/othmane-mrichcha/promptlock-research
+logsource:
+  category: file_event
+  product: windows
+detection:
+  selection:
+    TargetFilename|endswith: '.gguf'
+  filter_legit_dirs:
+    TargetFilename|contains:
+      - '\Users\%USERNAME%\.ollama\models'
+      - '\Program Files\Ollama'
+      - '\AppData\Local\Ollama'
+      - '\AI\models'
+      - '\ml\models'
+      - '\LLM\models'
+  filter_legit_process:
+    Image|contains:
+      - 'ollama.exe'
+      - 'python.exe'
+      - 'huggingface'
+  condition: selection and not filter_legit_dirs and not filter_legit_process
+fields:
+  - TargetFilename
+  - Image
+  - User
+  - ProcessId
+falsepositives:
+  - AI researchers downloading models to non-standard paths
+  - Automated ML pipelines staging models in temp directories
+  - LLM development tools using custom cache directories
+level: high
+tags:
+  - attack.resource_development
+  - attack.defense_evasion
+  - attack.t1105
+  - attack.t1027
+
+
+# ─────────────────────────────────────────────────────────────
+# RULE 4 — LLM Ransomware HTTP User-Agent Detected
+# ─────────────────────────────────────────────────────────────
+title: PromptLock Ransomware HTTP User-Agent Detected
+id: d5b2f4c3-1a7e-4d8f-cf45-4a5b6c7d8e9f
+status: stable
+description: >
+  Detects the HTTP User-Agent string "PromptLock-Ransomware"
+  in network proxy logs or EDR HTTP telemetry. This string is
+  hardcoded in the PromptLock Go wrapper and appears in every
+  HTTP request made to the Ollama API during execution. Detection
+  of this string is a confirmed indicator of compromise and
+  should trigger an immediate incident response workflow.
+author: Othmane Mrichcha
+date: 2026-04-15
+references:
+  - https://github.com/othmane-mrichcha/promptlock-research
+logsource:
+  category: proxy
+  product: windows
+detection:
+  selection:
+    cs-user-agent|contains: 'PromptLock-Ransomware'
+  condition: selection
+fields:
+  - cs-user-agent
+  - c-ip
+  - cs-uri-stem
+  - cs-host
+  - sc-status
+falsepositives:
+  - None expected — this string has no legitimate use case
+level: critical
+tags:
+  - attack.execution
+  - attack.t1059
+  - attack.t1071.001
+
+# ─────────────────────────────────────────────────────────────
+# DEPLOYMENT NOTES
+# ─────────────────────────────────────────────────────────────
+#
+# Convert to your SIEM query language using sigmac or pySigma:
+#
+#   Splunk   : sigmac -t splunk  sigma_promptlock_detection_pack.yml
+#   Elastic  : sigmac -t es-ql   sigma_promptlock_detection_pack.yml
+#   Sentinel : sigmac -t azure   sigma_promptlock_detection_pack.yml
+#   QRadar   : sigmac -t qradar  sigma_promptlock_detection_pack.yml
+#
+# Recommended alert priority:
+#   Rule 1 — High    : investigate within 1 hour
+#   Rule 2 — Medium  : investigate within 4 hours, correlate with Rule 1
+#   Rule 3 — High    : investigate within 1 hour, check for Rule 1 + 2
+#   Rule 4 — Critical: trigger IR workflow immediately, no false positives expected
+
