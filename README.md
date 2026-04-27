@@ -19,7 +19,7 @@ The goal of this repository is to help defenders understand this new threat mode
   Detection rules for SIEM and log monitoring platforms.
 
 - **Presentation Slides**  
-  Security talk and research presentation about PromptLock, architecture, risks, and detection methods. :contentReference[oaicite:0]{index=0}
+  Security talk and research presentation about PromptLock, architecture, risks, and detection methods.
 
 ## Research Scope
 
